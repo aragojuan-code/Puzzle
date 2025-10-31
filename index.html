@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Rotas 3×3 — Foto (cuadrícula suave)</title>
+<style>
+  :root{--bg:#0f141b;--panel:#121a23;--muted:#9fb3c9;--tile:#101722;--accent:#6ab0ff;--grid:rgba(230,238,247,.18)}
+  html,body{height:100%;margin:0;background:var(--bg);color:#e6eef7;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial}
+  .wrap{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;max-width:580px;margin:0 auto}
+  header{display:flex;gap:10px;align-items:center;justify-content:space-between;width:100%}
+  h1{font-size:18px;margin:0;font-weight:700}
+  .controls{display:flex;gap:8px;flex-wrap:wrap}
+  button,label.btn{background:var(--panel);color:#e6eef7;border:1px solid rgba(255,255,255,.1);padding:10px 12px;border-radius:10px;cursor:pointer}
+  button[disabled],label.btn.disabled{opacity:.5;cursor:not-allowed}
+  button:hover,label.btn:hover{border-color:rgba(255,255,255,.25)}
+  input[type="file"]{display:none}
+  .info{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{padding:6px 10px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.05);font-size:14px;color:var(--muted)}
+  .board-wrap{position:relative;width:min(92vw,400px);aspect-ratio:1/1}
+  .board{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:8px;padding:8px;
+         background:linear-gradient(180deg,#0b1118,#0e1722);border-radius:16px;border:1px solid rgba(255,255,255,.06)}
+  .cell{border-radius:12px;border:1px solid rgba(255,255,255,.08);
+        background:var(--tile); background-repeat:no-repeat; background-size:300% 300%;
+        transition:transform .08s ease-out, box-shadow .12s ease}
+  .cell.flash{transform:scale(1.045)}
+  .cell.hl{box-shadow:0 0 0 2px var(--accent) inset}
+
+  /* Cruces internas (centros de cada 2×2): 33% / 66% */
+  .cross{position:absolute;width:58px;height:58px;border-radius:50%;background:rgba(255,255,255,.06);
+         border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;cursor:pointer;
+         transition:transform .08s ease-out, background .12s ease, border-color .12s ease}
+  .cross:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25)}
+  .cross:active{transform:scale(.96)}
+  .cross svg{width:24px;height:24px;opacity:.92}
+  .c-tl{left:33.33%; top:33.33%; transform:translate(-50%,-50%);}
+  .c-tr{left:66.66%; top:33.33%; transform:translate(-50%,-50%);}
+  .c-bl{left:33.33%; top:66.66%; transform:translate(-50%,-50%);}
+  .c-br{left:66.66%; top:66.66%; transform:translate(-50%,-50%);}
+
+  /* Cuadrícula suave por encima SIEMPRE visible */
+  .grid-overlay{position:absolute;inset:8px;pointer-events:none}
+  .gline{position:absolute;background:var(--grid);border-radius:2px;filter:blur(.2px)}
+  .gv1{top:0;bottom:0;left:calc(33.333% - 1px);width:2px}
+  .gv2{top:0;bottom:0;left:calc(66.666% - 1px);width:2px}
+  .gh1{left:0;right:0;top:calc(33.333% - 1px);height:2px}
+  .gh2{left:0;right:0;top:calc(66.666% - 1px);height:2px}
+
+  footer{margin-top:6px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Rotas 3×3 — Foto</h1>
+    <div class="controls">
+      <label for="fileInput" class="btn" id="loadBtn">Cargar foto</label>
+      <button id="shuffleBtn" disabled>Mezclar</button>
+      <button id="resetBtn" disabled>Reiniciar</button>
+      <input id="fileInput" type="file" accept="image/*">
+    </div>
+  </header>
+
+  <div class="board-wrap">
+    <div id="board" class="board"></div>
+
+    <!-- Cuadrícula suave (siempre visible) -->
+    <div class="grid-overlay">
+      <div class="gline gv1"></div>
+      <div class="gline gv2"></div>
+      <div class="gline gh1"></div>
+      <div class="gline gh2"></div>
+    </div>
+
+    <!-- Botones en las CRUCES INTERNAS -->
+    <div class="cross c-tl" data-corner="0" title="Girar 2×2 sup-izq (horario)">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h6a4 4 0 1 1-2.83 6.83L7 11" stroke="#e6eef7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="cross c-tr" data-corner="1" title="Girar 2×2 sup-der (horario)">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h6a4 4 0 1 1-2.83 6.83L7 11" stroke="#e6eef7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="cross c-bl" data-corner="2" title="Girar 2×2 inf-izq (horario)">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h6a4 4 0 1 1-2.83 6.83L7 11" stroke="#e6eef7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="cross c-br" data-corner="3" title="Girar 2×2 inf-der (horario)">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h6a4 4 0 1 1-2.83 6.83L7 11" stroke="#e6eef7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+  </div>
+
+  <div class="info">
+    <div class="pill"><strong>Movs:</strong> <span id="moves">0</span></div>
+    <div class="pill"><strong>Estado:</strong> <span id="status">Carga una foto</span></div>
+  </div>
+  <footer>Gira los 2×2 desde las cruces internas</footer>
+</div>
+
+<script>
+  // Estado: en resuelto state[i] === i (índice del trozo que muestra la celda i)
+  let state = [0,1,2,3,4,5,6,7,8];
+  let moves = 0;
+  let imgURL = null;      // dataURL del recorte cuadrado
+  let imageReady = false;
+
+  const boardEl = document.getElementById('board');
+  const movesEl = document.getElementById('moves');
+  const statusEl = document.getElementById('status');
+  const fileInput = document.getElementById('fileInput');
+  const shuffleBtn = document.getElementById('shuffleBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  // Cruces (2×2)
+  const crossIdx = {
+    0:[0,1,4,3], 1:[1,2,5,4], 2:[3,4,7,6], 3:[4,5,8,7]
+  };
+
+  function render(){
+    boardEl.innerHTML='';
+    state.forEach((val,i)=>{
+      const cell=document.createElement('div');
+      cell.className='cell';
+      if(imageReady && imgURL){
+        const cx = val % 3;
+        const cy = Math.floor(val/3);
+        const px = cx===0? '0%' : (cx===1? '50%' : '100%');
+        const py = cy===0? '0%' : (cy===1? '50%' : '100%');
+        cell.style.backgroundImage = `url(${imgURL})`;
+        cell.style.backgroundPosition = `${px} ${py}`;
+      }else{
+        cell.style.backgroundImage = '';
+      }
+      boardEl.appendChild(cell);
+    });
+  }
+
+  function highlight(idx,on=true){
+    const cells=boardEl.querySelectorAll('.cell');
+    idx.forEach(i=>cells[i].classList.toggle('hl',on));
+  }
+
+  function rotateClockwise(corner){
+    if(!imageReady) return;
+    const idx=crossIdx[corner];
+    const cells=boardEl.querySelectorAll('.cell');
+    idx.forEach(i=>cells[i].classList.add('flash'));
+    setTimeout(()=>idx.forEach(i=>cells[i].classList.remove('flash')),120);
+
+    const a=state[idx[0]], b=state[idx[1]], c=state[idx[2]], d=state[idx[3]];
+    // [a,b,c,d] -> [d,a,b,c]
+    state[idx[0]]=d; state[idx[1]]=a; state[idx[2]]=b; state[idx[3]]=c;
+
+    moves++; movesEl.textContent=moves;
+    render(); checkWin();
+  }
+
+  function isSolved(){ return state.every((v,i)=>v===i); }
+
+  function checkWin(){
+    const win = imageReady && isSolved();
+    statusEl.textContent = win ? '¡Resuelto! ✨' : (imageReady ? 'Jugando…' : 'Carga una foto');
+    if(win && navigator.vibrate) navigator.vibrate(60);
+  }
+
+  function randomInt(n){ return Math.floor(Math.random()*n); }
+  function applyRotate(corner){
+    const idx=crossIdx[corner];
+    const a=state[idx[0]], b=state[idx[1]], c=state[idx[2]], d=state[idx[3]];
+    state[idx[0]]=d; state[idx[1]]=a; state[idx[2]]=b; state[idx[3]]=c;
+  }
+  function shuffle(times=60){
+    if(!imageReady) return;
+    state=[0,1,2,3,4,5,6,7,8];
+    for(let i=0;i<times;i++) applyRotate(randomInt(4));
+    moves=0; movesEl.textContent=moves;
+    render(); checkWin();
+  }
+
+  // Recorta al centro para cuadrar sin deformar
+  async function cropToSquare(file){
+    return new Promise((resolve,reject)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const side = Math.min(img.width, img.height);
+        const sx = Math.floor((img.width - side)/2);
+        const sy = Math.floor((img.height - side)/2);
+
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const size = 900 * dpr; // salida cuadrada razonable
+
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/jpeg', 0.92));
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  // Cargar foto
+  fileInput.addEventListener('change', async (e)=>{
+    const file=e.target.files?.[0]; if(!file) return;
+    statusEl.textContent='Procesando foto…';
+    try{
+      imgURL = await cropToSquare(file);
+      imageReady = true;
+      shuffleBtn.disabled = false;
+      resetBtn.disabled = false;
+      moves = 0; movesEl.textContent = moves;
+      state=[0,1,2,3,4,5,6,7,8]; // ordenado
+      render(); checkWin();
+      // Barajar automáticamente
+      shuffle(80);
+    }catch(err){
+      console.error(err);
+      statusEl.textContent='Error al cargar la imagen';
+    }
+  });
+
+  // Botones/controles
+  document.querySelectorAll('.cross').forEach(btn=>{
+    const corner=parseInt(btn.dataset.corner,10);
+    btn.addEventListener('mouseenter',()=>highlight(crossIdx[corner],true));
+    btn.addEventListener('mouseleave',()=>highlight(crossIdx[corner],false));
+    btn.addEventListener('touchstart',()=>highlight(crossIdx[corner],true),{passive:true});
+    btn.addEventListener('touchend',()=>highlight(crossIdx[corner],false));
+    btn.addEventListener('click',()=>rotateClockwise(corner));
+  });
+
+  document.getElementById('shuffleBtn').addEventListener('click',()=>shuffle(80));
+  document.getElementById('resetBtn').addEventListener('click',()=>{
+    if(!imageReady) return;
+    state=[0,1,2,3,4,5,6,7,8]; moves=0; movesEl.textContent=moves; render(); checkWin();
+  });
+
+  // Render inicial: cuadrícula vacía visible
+  render();
+</script>
+</body>
+</html>
